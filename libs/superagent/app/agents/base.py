@@ -76,6 +76,7 @@ class AgentBase:
                     return_direct=agent_tool.tool.returnDirect,
                 )
             tools.append(tool)
+        print("agent invocation", self.agent_id, tools)
         return tools
 
     async def _get_llm(self, agent_llm: AgentLLM, model: str) -> Any:
