@@ -142,6 +142,7 @@ class AgentBase:
                 "tools": {"include": {"tool": True}},
             },
         )
+        print("agent retrieval", config)
         tools = await self._get_tools(
             agent_datasources=config.datasources, agent_tools=config.tools
         )
