@@ -14,6 +14,7 @@ from langchain.document_loaders import (
     TextLoader,
     UnstructuredMarkdownLoader,
     UnstructuredWordDocumentLoader,
+    SitemapLoader,
     WebBaseLoader,
     YoutubeLoader,
 )
@@ -52,6 +53,8 @@ class DataLoader:
             return self.load_airtable()
         elif self.datasource.type == "STRIPE":
             return self.load_stripe()
+        elif self.datasource.type == "SITEMAP":
+            return self.load_sitemap()
         else:
             raise ValueError(f"Unsupported datasource type: {self.datasource.type}")
 
@@ -79,6 +82,10 @@ class DataLoader:
 
     def load_google_doc(self):
         pass
+
+    def load_sitemap(self):
+        loader = SitemapLoader(self.datasource.url)
+        return loader.load_and_split()
 
     def load_pptx(self):
         from pptx import Presentation
