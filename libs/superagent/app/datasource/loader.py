@@ -23,6 +23,8 @@ from pyairtable import Api
 
 from prisma.models import Datasource
 
+import logging
+logger = logging.getLogger(__name__)
 
 def run_async_code_in_thread(func, *args, **kwargs):
     import threading
@@ -38,14 +40,14 @@ def run_async_code_in_thread(func, *args, **kwargs):
             result_queue.put(result)
 
     thread = threading.Thread(target=run_in_thread)
-    print("Starting thread execution now.")
+    logger.info("Starting thread execution now.")
     thread.start()
     thread.join()
 
     result = result_queue.get()
     if isinstance(result, Exception):
         raise result
-    print("finished with thread " + result)
+    logger.info("finished with thread " + result)
     return result
 
 
@@ -79,7 +81,7 @@ class DataLoader:
         elif self.datasource.type == "STRIPE":
             return self.load_stripe()
         elif self.datasource.type == "SITEMAP":
-            print('loading from sitemap: ' + str(self.datasource))
+            logger.info('loading from sitemap: ' + str(self.datasource))
             return self.load_sitemap()
         else:
             raise ValueError(f"Unsupported datasource type: {self.datasource.type}")
