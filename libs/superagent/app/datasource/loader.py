@@ -38,13 +38,14 @@ def run_async_code_in_thread(func, *args, **kwargs):
             result_queue.put(result)
 
     thread = threading.Thread(target=run_in_thread)
+    print("Starting thread execution now.")
     thread.start()
     thread.join()
 
     result = result_queue.get()
     if isinstance(result, Exception):
         raise result
-
+    print(result)
     return result
 
 
@@ -78,6 +79,7 @@ class DataLoader:
         elif self.datasource.type == "STRIPE":
             return self.load_stripe()
         elif self.datasource.type == "SITEMAP":
+            print('loading from sitemap: ' + str(self.datasource))
             return run_async_code_in_thread(self.load_sitemap)
         else:
             raise ValueError(f"Unsupported datasource type: {self.datasource.type}")
