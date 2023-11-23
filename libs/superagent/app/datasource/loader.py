@@ -45,7 +45,7 @@ def run_async_code_in_thread(func, *args, **kwargs):
     result = result_queue.get()
     if isinstance(result, Exception):
         raise result
-    print(result)
+    print("finished with thread " + result)
     return result
 
 
@@ -80,7 +80,7 @@ class DataLoader:
             return self.load_stripe()
         elif self.datasource.type == "SITEMAP":
             print('loading from sitemap: ' + str(self.datasource))
-            return run_async_code_in_thread(self.load_sitemap)
+            return self.load_sitemap()
         else:
             raise ValueError(f"Unsupported datasource type: {self.datasource.type}")
 
@@ -111,6 +111,8 @@ class DataLoader:
 
     def load_sitemap(self):
         loader = SitemapLoader(self.datasource.url)
+        import nest_asyncio
+        nest_asyncio.apply()
         return loader.load_and_split()
 
     def load_pptx(self):
