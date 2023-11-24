@@ -23,6 +23,12 @@ from pyairtable import Api
 
 from prisma.models import Datasource
 
+import logging
+
+from app.utils.threading import run_async_code_in_thread
+
+logger = logging.getLogger(__name__)
+
 
 class DataLoader:
     def __init__(self, datasource: Datasource):
@@ -54,7 +60,7 @@ class DataLoader:
         elif self.datasource.type == "STRIPE":
             return self.load_stripe()
         elif self.datasource.type == "SITEMAP":
-            return self.load_sitemap()
+            return run_async_code_in_thread(self.load_sitemap)
         else:
             raise ValueError(f"Unsupported datasource type: {self.datasource.type}")
 
@@ -84,7 +90,7 @@ class DataLoader:
         pass
 
     def load_sitemap(self):
-        loader = SitemapLoader(self.datasource.url)
+        loader = SitemapLoader(self.datasource.url, restrict_to_same_domain=False)
         return loader.load_and_split()
 
     def load_pptx(self):
