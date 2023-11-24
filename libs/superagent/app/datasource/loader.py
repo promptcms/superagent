@@ -24,31 +24,10 @@ from pyairtable import Api
 from prisma.models import Datasource
 
 import logging
+
+from app.utils.threading import run_async_code_in_thread
+
 logger = logging.getLogger(__name__)
-
-def run_async_code_in_thread(func, *args, **kwargs):
-    import threading
-    from queue import Queue
-    result_queue = Queue()
-
-    def run_in_thread():
-        try:
-            result = func(*args, **kwargs)
-        except Exception as e:
-            result_queue.put(e)
-        else:
-            result_queue.put(result)
-
-    thread = threading.Thread(target=run_in_thread)
-    logger.info("Starting thread execution now.")
-    thread.start()
-    thread.join()
-
-    result = result_queue.get()
-    if isinstance(result, Exception):
-        raise result
-    logger.info("finished with thread " + result)
-    return result
 
 
 class DataLoader:
@@ -81,8 +60,7 @@ class DataLoader:
         elif self.datasource.type == "STRIPE":
             return self.load_stripe()
         elif self.datasource.type == "SITEMAP":
-            logger.info('loading from sitemap: ' + str(self.datasource))
-            return self.load_sitemap()
+            return run_async_code_in_thread(self.load_sitemap)
         else:
             raise ValueError(f"Unsupported datasource type: {self.datasource.type}")
 
@@ -112,9 +90,7 @@ class DataLoader:
         pass
 
     def load_sitemap(self):
-        loader = SitemapLoader(self.datasource.url)
-        import nest_asyncio
-        nest_asyncio.apply()
+        loader = SitemapLoader(self.datasource.url, restrict_to_same_domain=False)
         return loader.load_and_split()
 
     def load_pptx(self):
