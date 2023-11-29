@@ -15,6 +15,7 @@ from app.datasource.types import (
 from app.models.tools import DatasourceInput
 from app.tools import TOOL_TYPE_MAPPING, create_tool
 from app.tools.datasource import DatasourceTool, StructuredDatasourceTool
+from app.utils.langfuse import langfuse_handler
 from app.utils.llm import LLM_MAPPING
 from app.utils.prisma import prisma
 from app.utils.streaming import CustomAsyncIteratorCallbackHandler
@@ -86,7 +87,7 @@ class AgentBase:
                 openai_api_key=agent_llm.llm.apiKey,
                 temperature=0,
                 streaming=self.enable_streaming,
-                callbacks=[self.callback] if self.enable_streaming else [],
+                callbacks=[self.callback, langfuse_handler] if self.enable_streaming else [langfuse_handler],
                 **(agent_llm.llm.options if agent_llm.llm.options else {}),
             )
         if agent_llm.llm.provider == "AZURE_OPENAI":
