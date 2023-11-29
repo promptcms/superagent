@@ -81,13 +81,18 @@ class AgentBase:
         return tools
 
     async def _get_llm(self, agent_llm: AgentLLM, model: str) -> Any:
+        callbacks = []
+        if self.enable_streaming:
+            callbacks.append(self.callback)
+        if config("LANGFUSE_TRACING"):
+            callbacks.append(langfuse_handler)
         if agent_llm.llm.provider == "OPENAI":
             return ChatOpenAI(
                 model=LLM_MAPPING[model],
                 openai_api_key=agent_llm.llm.apiKey,
                 temperature=0,
                 streaming=self.enable_streaming,
-                callbacks=[self.callback, langfuse_handler] if self.enable_streaming else [langfuse_handler],
+                callbacks=callbacks,
                 **(agent_llm.llm.options if agent_llm.llm.options else {}),
             )
         if agent_llm.llm.provider == "AZURE_OPENAI":
