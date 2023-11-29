@@ -177,7 +177,7 @@ async def invoke(
     ) -> AsyncIterable[str]:
         try:
             task = asyncio.ensure_future(
-                agent.acall(inputs={"input": content}, tags=[agent_id])
+                agent.acall(inputs={"input": content}, tags=[f"agent_{agent_id}", f"session_{agent.session_id}"])
             )
 
             async for token in callback.aiter():
@@ -213,7 +213,7 @@ async def invoke(
         return StreamingResponse(generator, media_type="text/event-stream")
 
     logging.info("Streaming not enabled. Invoking agent synchronously...")
-    output = await agent.acall(inputs={"input": input}, tags=[agent_id])
+    output = await agent.acall(inputs={"input": input}, tags=[f"agent_{agent_id}", f"session_{session_id}"])
     if output_schema:
         try:
             output = json.loads(output.get("output"))
