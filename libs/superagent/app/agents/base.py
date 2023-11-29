@@ -84,7 +84,7 @@ class AgentBase:
         callbacks = []
         if self.enable_streaming:
             callbacks.append(self.callback)
-        if config("LANGFUSE_TRACING"):
+        if config("LANGFUSE_TRACING") and config("LANGFUSE_TRACING") == 'True':
             callbacks.append(langfuse_handler)
         if agent_llm.llm.provider == "OPENAI":
             return ChatOpenAI(
