@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import router
 from app.utils.prisma import prisma
+from decouple import config
 
 # Create a color formatter
 formatter = colorlog.ColoredFormatter(
@@ -36,7 +37,13 @@ app = FastAPI(
     docs_url="/",
     description="The open framework for building AI Assistants",
     version="0.1.37",
-    servers=[{"url": "https://api.beta.superagent.sh"}],
+    servers=[
+        {
+            "url": f"https://{config('RAILWAY_PUBLIC_DOMAIN')}"
+            if config("RAILWAY_PUBLIC_DOMAIN", None)
+            else "http://localhost:3003"
+        }
+    ],
 )
 
 app.add_middleware(
