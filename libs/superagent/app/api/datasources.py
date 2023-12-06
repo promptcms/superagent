@@ -3,7 +3,7 @@ import json
 
 import segment.analytics as analytics
 from decouple import config
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, BackgroundTasks
 
 from app.datasource.flow import vectorize_datasource
 from app.models.request import Datasource as DatasourceRequest
@@ -31,6 +31,7 @@ analytics.write_key = SEGMENT_WRITE_KEY
 )
 async def create(
     body: DatasourceRequest,
+    background_tasks: BackgroundTasks,
     api_user=Depends(get_current_api_user),
 ):
     """Endpoint for creating an datasource"""
@@ -50,7 +51,7 @@ async def create(
             except Exception as flow_exception:
                 handle_exception(flow_exception)
 
-        asyncio.create_task(run_vectorize_flow(datasource=data))
+        background_tasks.add_task(run_vectorize_flow, datasource=data)
         return {"success": True, "data": data}
     except Exception as e:
         handle_exception(e)
