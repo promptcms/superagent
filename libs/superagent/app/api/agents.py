@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import AsyncIterable
+from typing import AsyncIterable, Optional
 
 import llama_index
 import segment.analytics as analytics
@@ -14,7 +14,7 @@ from langsmith import Client
 
 from app.agents.base import AgentBase
 from app.models.request import (
-    Agent as AgentRequest,
+    Agent as AgentRequest, RagInvoke,
 )
 from app.models.request import (
     AgentDatasource as AgentDatasourceRequest,
@@ -36,6 +36,7 @@ from app.models.response import (
 )
 from app.models.response import (
     AgentInvoke as AgentInvokeResponse,
+    RagInvoke as RagInvokeResponse,
 )
 from app.models.response import (
     AgentList as AgentListResponse,
@@ -176,13 +177,13 @@ async def update(
         handle_exception(e)
 
 @router.post(
-    "/agents/{agent_id}/llama_invoke",
+    "/agents/{agent_id}/invoke_rag",
     name="invoke",
-    description="Invoke an agent",
-    response_model=AgentInvokeResponse,
+    description="Invoke a rag workflow",
+    response_model=RagInvokeResponse,
 )
-async def llama_invoke(
-    agent_id: str, body: AgentInvokeRequest, api_user=Depends(get_current_api_user)
+async def invoke_rag(
+    agent_id: str, body: RagInvoke, api_user=Depends(get_current_api_user)
 ):
     agent_config = await prisma.agent.find_first(
         where={"id": agent_id, "apiUserId": api_user.id},
@@ -196,27 +197,48 @@ async def llama_invoke(
     vector_store = PineconeVectorStore(
         pinecone_index=pinecone_client().index, metadata_filters=metadata_filters
     )
-    llama_index.set_global_handler("simple")
     index = VectorStoreIndex.from_vector_store(vector_store)
+    prompt_tmpl = create_prompt_template(agent_config.prompt, body.chatHistory)
     query_engine = index.as_query_engine()
-    if agent_config.prompt:
-        qa_tmpl_str = (
+    query_engine.update_prompts({"response_synthesizer:text_qa_template": prompt_tmpl})
+    response = query_engine.query(body.input)
+    return {"success": True, "data": response}
+
+def create_prompt_template(prompt: Optional[str], history):
+    context_template = (
             "Context information is below.\n"
             "---------------------\n"
             "{context_str}\n"
             "---------------------\n"
+    )
+    qa_template = []
+    qa_template.append(context_template)
+    if prompt:
+        instructions_template = (
             "Additional instructions are below\n"
             "---------------------\n"
-            "{user_provided_instructions}\n"
+            f"{prompt}\n"
             "---------------------\n"
-            "Given the context information, additional instructions and NOT prior knowledge, answer the query.\n"
-            "Query: {query_str}\n"
-            "Answer: "
         )
-        query_engine.update_prompts({"response_synthesizer:text_qa_template": PromptTemplate(
-            qa_tmpl_str).partial_format(user_provided_instructions="Insert puns into your answer.")})
-    response = query_engine.query(body.input)
-    return {"success": True, "data": response}
+        qa_template.append(instructions_template)
+    if history:
+        formatted_history = "\n".join(history)
+        chat_history_template = (
+            "Chat history is below\n"
+            "---------------------\n"
+            f"{formatted_history}\n"
+            "---------------------\n"
+        )
+        qa_template.append(chat_history_template)
+    query_template = (
+        "Given the context information, additional instructions, chat history and NOT prior knowledge, "
+        "answer the query.\n"
+        "Query: {query_str}\n"
+        "Answer: "
+    )
+    qa_template.append(query_template)
+    qa_tmpl_str = "".join(qa_template)
+    return PromptTemplate(qa_tmpl_str)
 
 @router.post(
     "/agents/{agent_id}/invoke",

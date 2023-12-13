@@ -31,6 +31,10 @@ class AgentInvoke(BaseModel):
     enableStreaming: bool
     outputSchema: Optional[str]
 
+class RagInvoke(BaseModel):
+    input: str
+    chatHistory: Optional[list[Any]]
+
 
 class Datasource(BaseModel):
     name: str

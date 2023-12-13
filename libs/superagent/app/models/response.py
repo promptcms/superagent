@@ -67,6 +67,10 @@ class AgentInvoke(BaseModel):
     success: bool
     data: Any
 
+class RagInvoke(BaseModel):
+    success: bool
+    data: Any
+
 
 class Datasource(BaseModel):
     success: bool
