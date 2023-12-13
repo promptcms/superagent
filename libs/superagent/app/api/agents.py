@@ -3,6 +3,7 @@ import json
 import logging
 from typing import AsyncIterable
 
+import llama_index
 import segment.analytics as analytics
 from decouple import config
 from fastapi import APIRouter, Depends
@@ -47,6 +48,9 @@ from app.utils.api import get_current_api_user, handle_exception
 from app.utils.llm import LLM_PROVIDER_MAPPING
 from app.utils.prisma import prisma
 from app.utils.streaming import CustomAsyncIteratorCallbackHandler
+from app.vectorstores.pinecone import PineconeVectorStore as pinecone_client
+from llama_index import VectorStoreIndex, PromptTemplate
+from llama_index.vector_stores import PineconeVectorStore
 
 SEGMENT_WRITE_KEY = config("SEGMENT_WRITE_KEY", None)
 
@@ -171,6 +175,48 @@ async def update(
     except Exception as e:
         handle_exception(e)
 
+@router.post(
+    "/agents/{agent_id}/llama_invoke",
+    name="invoke",
+    description="Invoke an agent",
+    response_model=AgentInvokeResponse,
+)
+async def llama_invoke(
+    agent_id: str, body: AgentInvokeRequest, api_user=Depends(get_current_api_user)
+):
+    agent_config = await prisma.agent.find_first(
+        where={"id": agent_id, "apiUserId": api_user.id},
+        include={
+            "datasources": {"include": {"datasource": True}},
+        },
+    )
+    datasource_ids = [ds.datasourceId for ds in agent_config.datasources]
+
+    metadata_filters = {"datasource_id": {"$in": datasource_ids}}
+    vector_store = PineconeVectorStore(
+        pinecone_index=pinecone_client().index, metadata_filters=metadata_filters
+    )
+    llama_index.set_global_handler("simple")
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    query_engine = index.as_query_engine()
+    if agent_config.prompt:
+        qa_tmpl_str = (
+            "Context information is below.\n"
+            "---------------------\n"
+            "{context_str}\n"
+            "---------------------\n"
+            "Additional instructions are below\n"
+            "---------------------\n"
+            "{user_provided_instructions}\n"
+            "---------------------\n"
+            "Given the context information, additional instructions and NOT prior knowledge, answer the query.\n"
+            "Query: {query_str}\n"
+            "Answer: "
+        )
+        query_engine.update_prompts({"response_synthesizer:text_qa_template": PromptTemplate(
+            qa_tmpl_str).partial_format(user_provided_instructions="Insert puns into your answer.")})
+    response = query_engine.query(body.input)
+    return {"success": True, "data": response}
 
 @router.post(
     "/agents/{agent_id}/invoke",
