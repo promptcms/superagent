@@ -2,6 +2,7 @@ import logging
 from decouple import config
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends
+from prisma.enums import DatasourceStatus
 
 from app.models.response import (
     AgentInvoke as AgentInvokeResponse,
@@ -72,6 +73,7 @@ async def invoke(
         "data": {
             "input": body.input,
             "output": chat.response,
+            "staleIndex": any(ds.status in [DatasourceStatus.IN_PROGRESS, DatasourceStatus.FAILED] for ds in agent_config.datasources)
         },
     }
 
