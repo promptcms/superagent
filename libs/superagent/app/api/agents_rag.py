@@ -1,8 +1,9 @@
 import logging
-from decouple import config
+from datetime import datetime
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends
 from prisma.enums import DatasourceStatus
+from prisma.models import Agent
 
 from app.models.response import (
     AgentInvoke as AgentInvokeResponse,
@@ -55,7 +56,7 @@ async def invoke(
     vector_store = create_vector_store(metadata_filters)
     index = VectorStoreIndex.from_vector_store(vector_store)
 
-    chat_history = createChatHistory(body)
+    chat_history = create_chat_history(body)
 
     chat_engine = index.as_chat_engine(
         service_context=create_service_context(agent_config.llmModel),
@@ -73,8 +74,7 @@ async def invoke(
         "data": {
             "input": body.input,
             "output": chat.response,
-            "staleIndex": any([ds.status in [DatasourceStatus.IN_PROGRESS, DatasourceStatus.FAILED] for ds in agent_config.datasources]),
-            "dataRecency": min([ds.updatedAt for ds in agent_config.datasources], default=None),
+            "recency": create_recency(agent_config),
         },
     }
 
@@ -85,7 +85,7 @@ def create_vector_store(metadata_filters: any):
     )
 
 
-def createChatHistory(body: AgentRAGInvoke):
+def create_chat_history(body: AgentRAGInvoke):
     return (
         [
             ChatMessage(
@@ -99,6 +99,30 @@ def createChatHistory(body: AgentRAGInvoke):
         if body.chatHistory
         else []
     )
+
+
+def create_recency(agent_config: Agent | None):
+    return {
+        "progress": (
+            0.0
+            + len(
+                [
+                    ds.datasource
+                    for ds in agent_config.datasources
+                    if ds.datasource.status == DatasourceStatus.DONE
+                ]
+            )
+            / len(agent_config.datasources)
+        )
+        if agent_config.datasources is not None
+        else 1.0,
+        "staleness": min(
+            [ds.datasource.updatedAt for ds in agent_config.datasources]
+            if agent_config.datasources is not None
+            else [datetime.DateTme.now()],
+            default=datetime.now(),
+        ),
+    }
 
 
 def create_service_context(llmModel: str):
