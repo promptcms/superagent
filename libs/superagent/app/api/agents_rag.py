@@ -73,8 +73,8 @@ async def invoke(
         "data": {
             "input": body.input,
             "output": chat.response,
-            "staleIndex": any(ds.status in [DatasourceStatus.IN_PROGRESS, DatasourceStatus.FAILED] for ds in agent_config.datasources)
-            "dataRecency": min(ds.updatedAt for ds in agent_config.datasources),
+            "staleIndex": any([ds.status in [DatasourceStatus.IN_PROGRESS, DatasourceStatus.FAILED] for ds in agent_config.datasources]),
+            "dataRecency": min([ds.updatedAt for ds in agent_config.datasources], default=None),
         },
     }
 
