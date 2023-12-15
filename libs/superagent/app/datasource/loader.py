@@ -152,8 +152,9 @@ class DataLoader:
     def load_webpage(self):
         loader = RecursiveUrlLoader(
             url=self.datasource.url,
-            max_depth=2,
+            max_depth=5,
             extractor=lambda x: Soup(x, "html.parser").text,
+            timeout=60,
         )
         chunks = loader.load_and_split()
         for chunk in chunks:
