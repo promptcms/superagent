@@ -96,13 +96,15 @@ class PineconeVectorStore:
 
             embeddings = self._embed_with_retry(texts_to_embed)
             to_upsert = list(zip(batch_ids, embeddings, batch))
-            logger.debug(f"Upserting: {to_upsert}")
+            logger.debug(f"Raw docs to upsert: {to_upsert}")
+            logger.info(f"Upserting: {len(to_upsert)} documents")
 
             try:
                 res = self.index.upsert(vectors=to_upsert)
                 logger.info(f"Upserted documents. {res}")
             except Exception as e:
                 logger.error(f"Failed to upsert documents. Error: {e}")
+                raise e
 
         return self.index.describe_index_stats()
 

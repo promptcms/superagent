@@ -49,6 +49,7 @@ async def create(
                     datasource=datasource,
                 )
             except Exception as flow_exception:
+                await prisma.datasource.update(where={"id": datasource.id}, data={"status": "FAILED"})
                 handle_exception(flow_exception)
 
         background_tasks.add_task(run_vectorize_flow, datasource=data)
