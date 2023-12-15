@@ -76,7 +76,7 @@ class PineconeVectorStore:
                 "id": str(uuid.uuid4()),
                 "text": doc.page_content,
                 "chunk": i,
-                **doc.metadata,
+                **{key: value for key, value in doc.metadata.items() if value is not None},
             }
             for i, doc in enumerate(documents)
         ]
@@ -96,8 +96,7 @@ class PineconeVectorStore:
 
             embeddings = self._embed_with_retry(texts_to_embed)
             to_upsert = list(zip(batch_ids, embeddings, batch))
-            logger.debug(f"Raw docs to upsert: {to_upsert}")
-            logger.info(f"Upserting: {len(to_upsert)} documents")
+            logger.debug(f"Upserting: {to_upsert}")
 
             try:
                 res = self.index.upsert(vectors=to_upsert)
