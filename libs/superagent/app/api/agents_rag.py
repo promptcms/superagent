@@ -4,9 +4,10 @@ from typing import Any, List, Optional, cast
 from fastapi import APIRouter, Depends
 from prisma.enums import DatasourceStatus
 from prisma.models import Agent
+from starlette.responses import StreamingResponse
 
 from app.models.response import (
-    AgentInvoke as AgentInvokeResponse,
+    AgentInvoke as AgentInvokeResponse, AgentDatasourceRecency,
 )
 from app.utils.api import get_current_api_user
 from app.utils.llm import LLM_MAPPING
@@ -38,9 +39,33 @@ router = APIRouter()
 logging.basicConfig(level=logging.INFO)
 
 
+@router.get(
+    "/agents_rag/{agent_id}/datasource_recency",
+    name="datasource_recency",
+    description="Get RAG agent datasource recency",
+    response_model=AgentDatasourceRecency,
+)
+async def get_datasource_recency(
+        agent_id: str, api_user=Depends(get_current_api_user)
+):
+    agent_config = await prisma.agent.find_first(
+        where={"id": agent_id, "apiUserId": api_user.id},
+        include={
+            "datasources": {"include": {"datasource": True}},
+        },
+    )
+    return {
+        "success": True,
+        "data": {
+            "recency": create_recency(agent_config),
+        },
+    }
+
+
 class AgentRAGInvoke(BaseModel):
     input: str
     chatHistory: Optional[List[Any]]
+    enableStreaming: Optional[bool] = False
 
 
 @router.post(
@@ -77,6 +102,10 @@ async def invoke(
         similarity_top_k=64,
         node_postprocessors=[TokenLimitingPostprocessor(8192)] # Memory token limit of 12,288 - 4,096 system message & user message token limit
     )
+    if body.enableStreaming:
+        chat = await chat_engine.astream_chat(message=body.input, chat_history=chat_history)
+        return StreamingResponse(chat.response_gen, media_type="text/event-stream")
+
     chat = await chat_engine.achat(message=body.input, chat_history=chat_history)
 
     return {
