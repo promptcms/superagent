@@ -14,6 +14,7 @@ from app.utils.prisma import prisma
 from app.vectorstores.pinecone import PineconeVectorStore as pinecone_client
 
 from llama_index import (
+    Document,
     PromptTemplate,
     ServiceContext,
     VectorStoreIndex,
@@ -111,8 +112,7 @@ def create_chat_history(body: AgentRAGInvoke):
 def create_recency(agent_config: Agent | None):
     return {
         "progress": (
-            0.0
-            + len(
+            len(
                 [
                     ds.datasource
                     for ds in agent_config.datasources
@@ -198,10 +198,28 @@ class TokenLimitingPostprocessor(BaseNodePostprocessor):
         token_count = 0
 
         for i, n in enumerate(nodes):
-            tokens = len(self.tokenizer_fn(n.get_content()))
+            text = n.get_content()
+            tokens = len(self.tokenizer_fn(text))
+
             if token_count + tokens > self.token_limit:
+                if i == 0: # special case if the top hit is already too long
+                    token_count = len(self.tokenizer_fn(text))
+                    while token_count > self.token_limit:
+                        text = text[:len(text)//2]
+                        token_count = len(self.tokenizer_fn(text))
+                    logging.info(f"RAGging with truncated top hit comprising {token_count} tokens capped at {self.token_limit} limit with top hit comprising {tokens} tokens")
+                    return [NodeWithScore(node=Document(text=text))]
+                
+                if tokens > token_count: # special case if the next hit is very long versus the higher hits
+                    while tokens > self.token_limit - token_count:
+                        text = text[:len(text)//2]
+                        tokens = len(self.tokenizer_fn(text))
+                    logging.info(f"RAGging with top-{i} hits comprising {token_count + tokens} tokens capped at {self.token_limit} limit with final hit truncated to {tokens} tokens")
+                    return nodes[:i] + [NodeWithScore(node=Document(text=text))]
+
                 logging.info(f"RAGging with top-{i-1} hits comprising {token_count} tokens capped at {self.token_limit} limit with next hit comprising {tokens} tokens")
                 return nodes[:i]
+            
             token_count += tokens
         
         logging.info(f"RAGging with top-{len(nodes)} hits comprising {token_count} tokens not hitting {self.token_limit} limit")
