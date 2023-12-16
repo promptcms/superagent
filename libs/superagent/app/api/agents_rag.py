@@ -66,6 +66,7 @@ async def invoke(
             chat_history=chat_history, token_limit=28672
         ),
         context_template=create_prompt_template(agent_config.prompt),
+        similarity_top_k=10,
     )
     chat = await chat_engine.achat(message=body.input, chat_history=chat_history)
 
