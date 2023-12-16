@@ -13,6 +13,8 @@ from app.utils.llm import LLM_MAPPING
 from app.utils.prisma import prisma
 from app.vectorstores.pinecone import PineconeVectorStore as pinecone_client
 
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 from llama_index import (
     Document,
     PromptTemplate,
@@ -25,7 +27,7 @@ from llama_index.llms import OpenAI
 from llama_index.llms.types import MessageRole, ChatMessage
 from llama_index.memory import ChatMemoryBuffer
 from llama_index.postprocessor.types import BaseNodePostprocessor
-from llama_index.schema import NodeWithScore, QueryBundle, TextNode
+from llama_index.schema import NodeWithScore, QueryBundle
 from llama_index.service_context import ServiceContext
 from llama_index.utils import GlobalsHelper
 from llama_index.vector_stores import PineconeVectorStore
@@ -203,21 +205,47 @@ class TokenLimitingPostprocessor(BaseNodePostprocessor):
 
             if token_count + tokens > self.token_limit:
                 if i == 0: # special case if the top hit is already too long
-                    token_count = len(self.tokenizer_fn(text))
-                    while token_count > self.token_limit:
-                        text = text[:len(text)//2]
-                        token_count = len(self.tokenizer_fn(text))
-                    logging.info(f"RAGging with truncated top hit comprising {token_count} tokens capped at {self.token_limit} limit with top hit comprising {tokens} tokens")
-                    return [NodeWithScore(node=Document(text=text))]
+                    text_splitter = RecursiveCharacterTextSplitter(
+                        chunk_size = self.token_limit,
+                        chunk_overlap = 0,
+                        length_function = lambda x: len(self.tokenizer_fn(x)),
+                    )
+                    texts = text_splitter.create_documents([text])
+
+                    for j, t in enumerate(texts):
+                        toks = len(self.tokenizer_fn(t.page_content))
+
+                        if token_count + toks > self.token_limit:
+                            logging.info(f"RAGging with truncated top hit comprising {token_count} tokens capped at {self.token_limit} limit with full hit comprising {tokens} tokens")
+                            return [NodeWithScore(node=Document(text=tex.page_content)) for tex in texts[:j]]
+                    
+                        token_count += toks
+
+                    logging.info(f"RAGging with truncated top hit comprising {token_count} tokens capped at {self.token_limit} limit with full hit comprising {tokens} tokens")
+                    return [NodeWithScore(node=Document(text=tex.page_content)) for tex in texts]
                 
                 if tokens > token_count: # special case if the next hit is very long versus the higher hits
-                    while tokens > self.token_limit - token_count:
-                        text = text[:len(text)//2]
-                        tokens = len(self.tokenizer_fn(text))
-                    logging.info(f"RAGging with top-{i} hits comprising {token_count + tokens} tokens capped at {self.token_limit} limit with final hit truncated to {tokens} tokens")
-                    return nodes[:i] + [NodeWithScore(node=Document(text=text))]
+                    text_splitter = RecursiveCharacterTextSplitter(
+                        chunk_size = self.token_limit - token_count,
+                        chunk_overlap = 0,
+                        length_function = lambda x: len(self.tokenizer_fn(x)),
+                    )
+                    texts = text_splitter.create_documents([text])
 
-                logging.info(f"RAGging with top-{i-1} hits comprising {token_count} tokens capped at {self.token_limit} limit with next hit comprising {tokens} tokens")
+                    token_accum = 0
+                    for j, t in enumerate(texts):
+                        toks = len(self.tokenizer_fn(t.page_content))
+
+                        if token_accum + toks > self.token_limit - token_count:
+                            logging.info(f"RAGging with top-{i+1} hits comprising {token_count + token_accum} tokens capped at {self.token_limit} limit with final hit comprising {token_accum} out of {tokens} tokens")
+                            return nodes[:i] + [NodeWithScore(node=Document(text=tex.page_content)) for tex in texts[:j]]
+
+                        token_accum += toks
+
+                    logging.info(f"RAGging with top-{i+1} hits comprising {token_count + token_accum} tokens capped at {self.token_limit} limit with final hit comprising {token_accum} out of {tokens} tokens")
+                    return nodes[:i] + [NodeWithScore(node=Document(text=tex.page_content)) for tex in texts]
+
+                logging.info(f"RAGging with top-{i} hits comprising {token_count} tokens capped at {self.token_limit} limit with next hit comprising {tokens} tokens")
                 return nodes[:i]
             
             token_count += tokens
