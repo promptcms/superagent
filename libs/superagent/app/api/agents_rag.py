@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, cast
 from fastapi import APIRouter, Depends
 from prisma.enums import DatasourceStatus
 from prisma.models import Agent
@@ -14,14 +14,19 @@ from app.utils.prisma import prisma
 from app.vectorstores.pinecone import PineconeVectorStore as pinecone_client
 
 from llama_index import (
-    VectorStoreIndex,
     PromptTemplate,
     ServiceContext,
+    VectorStoreIndex,
 )
+from llama_index.bridge.pydantic import Field
 from llama_index.chat_engine.types import ChatMode
 from llama_index.llms import OpenAI
 from llama_index.llms.types import MessageRole, ChatMessage
 from llama_index.memory import ChatMemoryBuffer
+from llama_index.postprocessor.types import BaseNodePostprocessor
+from llama_index.schema import NodeWithScore, QueryBundle, TextNode
+from llama_index.service_context import ServiceContext
+from llama_index.utils import GlobalsHelper
 from llama_index.vector_stores import PineconeVectorStore
 
 from pydantic import BaseModel
@@ -63,10 +68,11 @@ async def invoke(
         chat_mode=ChatMode.CONTEXT,
         chat_history=chat_history,
         memory=ChatMemoryBuffer.from_defaults(
-            chat_history=chat_history, token_limit=28672
+            chat_history=chat_history, token_limit=12288 # GPT 3.5 Turbo limit of 16,384 - 4,096 output token limit
         ),
         context_template=create_prompt_template(agent_config.prompt),
-        similarity_top_k=10,
+        similarity_top_k=64,
+        node_postprocessors=[TokenLimitingPostprocessor(8192)] # Memory token limit of 12,288 - 4,096 system message & user message token limit
     )
     chat = await chat_engine.achat(message=body.input, chat_history=chat_history)
 
@@ -157,3 +163,46 @@ def create_prompt_template(prompt: Optional[str]):
 
     qa_tmpl_str = "".join(qa_template)
     return PromptTemplate(qa_tmpl_str)
+
+
+"""LLM reranker."""
+from typing import Callable, List, Optional
+
+
+class TokenLimitingPostprocessor(BaseNodePostprocessor):
+    token_limit: int = Field(
+        description="Token limit upon which to truncate context."
+    )
+    tokenizer_fn: Callable[[str], List] = Field(
+        # NOTE: mypy does not handle the typing here well, hence the cast
+        default_factory=cast(Callable[[], Any], GlobalsHelper().tokenizer),
+        exclude=True,
+    )
+
+    def __init__(
+        self,
+        token_limit: int = 4096,
+        tokenizer_fn = GlobalsHelper().tokenizer,
+    ) -> None:
+        super().__init__(token_limit=token_limit, tokenizer_fn=tokenizer_fn)
+
+    @classmethod
+    def class_name(cls) -> str:
+        return "TokenLimitingPostProcessor"
+
+    def _postprocess_nodes(
+        self,
+        nodes: List[NodeWithScore],
+        query_bundle: Optional[QueryBundle] = None,
+    ) -> List[NodeWithScore]:
+        token_count = 0
+
+        for i, n in enumerate(nodes):
+            tokens = len(self.tokenizer_fn(n.get_content()))
+            if token_count + tokens > self.token_limit:
+                logging.info(f"RAGging with top-{i-1} hits comprising {token_count} tokens capped at {self.token_limit} limit with next hit comprising {tokens} tokens")
+                return nodes[:i]
+            token_count += tokens
+        
+        logging.info(f"RAGging with top-{len(nodes)} hits comprising {token_count} tokens not hitting {self.token_limit} limit")
+        return nodes
