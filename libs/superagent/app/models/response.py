@@ -67,10 +67,6 @@ class AgentInvoke(BaseModel):
     success: bool
     data: Any
 
-class AgentDatasourceRecency(BaseModel):
-    success: bool
-    data: Any
-
 
 class Datasource(BaseModel):
     success: bool

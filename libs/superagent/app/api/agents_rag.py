@@ -7,7 +7,7 @@ from prisma.models import Agent
 from starlette.responses import StreamingResponse
 
 from app.models.response import (
-    AgentInvoke as AgentInvokeResponse, AgentDatasourceRecency,
+    AgentInvoke as AgentInvokeResponse,
 )
 from app.utils.api import get_current_api_user
 from app.utils.llm import LLM_MAPPING
@@ -38,6 +38,10 @@ from pydantic import BaseModel
 router = APIRouter()
 logging.basicConfig(level=logging.INFO)
 
+
+class AgentDatasourceRecency(BaseModel):
+    success: bool
+    data: Any
 
 @router.get(
     "/agents_rag/{agent_id}/datasource_recency",
