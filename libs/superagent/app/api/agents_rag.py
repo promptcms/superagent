@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, List, Optional, cast
+from typing import Any, List, Optional, cast, AsyncIterable
 from fastapi import APIRouter, Depends
 from prisma.enums import DatasourceStatus
 from prisma.models import Agent
@@ -23,7 +23,7 @@ from llama_index import (
     VectorStoreIndex,
 )
 from llama_index.bridge.pydantic import Field
-from llama_index.chat_engine.types import ChatMode
+from llama_index.chat_engine.types import ChatMode, StreamingAgentChatResponse
 from llama_index.llms import OpenAI
 from llama_index.llms.types import MessageRole, ChatMessage
 from llama_index.memory import ChatMemoryBuffer
@@ -102,9 +102,13 @@ async def invoke(
         similarity_top_k=64,
         node_postprocessors=[TokenLimitingPostprocessor(8192)] # Memory token limit of 12,288 - 4,096 system message & user message token limit
     )
+    async def stream_message_generator(stream: StreamingAgentChatResponse) -> AsyncIterable[str]:
+        async for response in stream.async_response_gen():
+            yield f"data: {response}\n\n"
+
     if body.enableStreaming:
         chat = await chat_engine.astream_chat(message=body.input, chat_history=chat_history)
-        return StreamingResponse(chat.response_gen, media_type="text/event-stream")
+        return StreamingResponse(stream_message_generator(chat), media_type="text/event-stream")
 
     chat = await chat_engine.achat(message=body.input, chat_history=chat_history)
 
