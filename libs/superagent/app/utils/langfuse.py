@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from langfuse import Langfuse
-from langfuse.model import CreateTrace, CreateEvent, CreateGeneration
+from langfuse.model import CreateTrace, CreateEvent, CreateGeneration, UpdateGeneration
 from llama_index.callbacks.base_handler import BaseCallbackHandler
 from llama_index.callbacks.schema import (
     CBEvent,
@@ -56,7 +57,7 @@ class LangfuseHandler(BaseCallbackHandler):
         """Shutdown the current trace."""
         if self.debug:
             print("ending trace {}".format(trace_id))
-        del self._lf_object_map[BASE_TRACE_EVENT]
+        self._lf_object_map.pop(BASE_TRACE_EVENT)
         self.langfuse.flush()
 
 
@@ -115,4 +116,6 @@ class LangfuseHandler(BaseCallbackHandler):
         """
         if self.debug:
             print("on_event_end {}".format(event_type))
-        del self._lf_object_map[event_id]
+        event = self._lf_object_map.pop(event_id)
+        if event_type == CBEventType.LLM:
+            event.update(UpdateGeneration(end_time=datetime.utcnow()))
