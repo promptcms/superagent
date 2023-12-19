@@ -98,7 +98,7 @@ async def invoke(
     chat_history = create_chat_history(body)
 
     chat_engine = index.as_chat_engine(
-        service_context=create_service_context(agent_config.llmModel),
+        service_context=create_service_context(agent_config.llmModel, agent_id, api_user.id),
         chat_mode=ChatMode.CONTEXT,
         chat_history=chat_history,
         memory=ChatMemoryBuffer.from_defaults(
@@ -173,8 +173,8 @@ def create_recency(agent_config: Agent | None):
     }
 
 
-def create_service_context(llmModel: str):
-    langfuse_handler = LangfuseHandler(debug=False)
+def create_service_context(llmModel: str, agent_id: str, api_user_id: str):
+    langfuse_handler = LangfuseHandler(debug=False, agent_id=agent_id, api_user_id=api_user_id)
     callback_manager = CallbackManager([langfuse_handler])
     return ServiceContext.from_defaults(
         callback_manager=callback_manager,

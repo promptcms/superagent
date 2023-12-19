@@ -27,11 +27,15 @@ class LangfuseHandler(BaseCallbackHandler):
         self,
         event_starts_to_ignore: Optional[List[CBEventType]] = None,
         event_ends_to_ignore: Optional[List[CBEventType]] = None,
+        agent_id: Optional[str] = None,
+        api_user_id: Optional[str] = None,
         debug: bool = True,
     ) -> None:
         """Initialize the llama debug handler."""
         self.langfuse = langfuse
         self._lf_object_map: Dict[str, any] = {}
+        self.agent_id = agent_id
+        self.api_user_id = api_user_id
         self.debug = debug
         event_starts_to_ignore = (
             event_starts_to_ignore if event_starts_to_ignore else []
@@ -46,7 +50,9 @@ class LangfuseHandler(BaseCallbackHandler):
         """Launch a trace."""
         if self.debug:
             print("starting trace {}".format(trace_id))
-        trace = self.langfuse.trace(CreateTrace(name="rag-invoke"))
+        trace = self.langfuse.trace(CreateTrace(name="rag-invoke",
+                                                user_id=self.api_user_id,
+                                                metadata={"agent_id": self.agent_id}))
         self._lf_object_map[BASE_TRACE_EVENT] = trace
 
     def end_trace(
