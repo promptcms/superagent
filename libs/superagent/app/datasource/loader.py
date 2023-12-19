@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup as Soup
+from bs4 import BeautifulSoup as Soup, BeautifulSoup
 from langchain.docstore.document import Document
 from langchain.document_loaders import (
     GitLoader,
@@ -90,7 +90,13 @@ class DataLoader:
         pass
 
     def load_sitemap(self):
-        loader = SitemapLoader(self.datasource.url, restrict_to_same_domain=False)
+        def remove_nav_and_header_elements(content: BeautifulSoup) -> str:
+            exclude = content.find_all(["nav", "footer", "header", "head"])
+            for element in exclude:
+                element.decompose()
+
+            return str(content.get_text()).strip()
+        loader = SitemapLoader(self.datasource.url, restrict_to_same_domain=False, parsing_function=remove_nav_and_header_elements)
         return loader.load_and_split()
 
     def load_pptx(self):
