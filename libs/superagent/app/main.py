@@ -1,11 +1,13 @@
 import logging
 import time
+from contextlib import asynccontextmanager
 
 import colorlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import router
+from app.utils.langfuse import langfuse
 from app.utils.prisma import prisma
 from decouple import config
 
@@ -72,6 +74,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     await prisma.disconnect()
+    langfuse.shutdown()
 
 
 app.include_router(router)
