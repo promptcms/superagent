@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Any, List, Optional, cast, AsyncIterable
 from fastapi import APIRouter, Depends
+from llama_index.callbacks import CallbackManager, LlamaDebugHandler
 from prisma.enums import DatasourceStatus
 from prisma.models import Agent
 from starlette.responses import StreamingResponse
@@ -10,6 +11,7 @@ from app.models.response import (
     AgentInvoke as AgentInvokeResponse,
 )
 from app.utils.api import get_current_api_user
+from app.utils.langfuse import LangfuseHandler
 from app.utils.llm import LLM_MAPPING
 from app.utils.prisma import prisma
 from app.vectorstores.pinecone import PineconeVectorStore as pinecone_client
@@ -172,7 +174,10 @@ def create_recency(agent_config: Agent | None):
 
 
 def create_service_context(llmModel: str):
+    langfuse_handler = LangfuseHandler(debug=False)
+    callback_manager = CallbackManager([langfuse_handler])
     return ServiceContext.from_defaults(
+        callback_manager=callback_manager,
         llm=OpenAI(temperature=0, model=LLM_MAPPING[llmModel])
     )
 
