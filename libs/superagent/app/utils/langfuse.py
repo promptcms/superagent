@@ -12,13 +12,7 @@ from llama_index.callbacks.schema import (
 langfuse = Langfuse()
 
 class LangfuseHandler(BaseCallbackHandler):
-    """Callback handler that keeps track of debug info.
-
-    NOTE: this is a beta feature. The usage within our codebase, and the interface
-    may change.
-
-    This handler simply keeps track of event starts/ends, separated by event types.
-    You can use this callback handler to keep track of and debug events.
+    """Callback handler that sends LLM events to Langfuse.
 
     Args:
         event_starts_to_ignore (Optional[List[CBEventType]]): list of event types to
@@ -74,7 +68,7 @@ class LangfuseHandler(BaseCallbackHandler):
         parent_id: str = "",
         **kwargs: Any,
     ) -> str:
-        """Store event start data by event type.
+        """On Event Start
 
         Args:
             event_type (CBEventType): event type to store.
@@ -111,7 +105,7 @@ class LangfuseHandler(BaseCallbackHandler):
         event_id: str = "",
         **kwargs: Any,
     ) -> None:
-        """Store event end data by event type.
+        """On event end.
 
         Args:
             event_type (CBEventType): event type to store.
