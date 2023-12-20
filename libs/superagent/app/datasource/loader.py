@@ -96,7 +96,7 @@ class DataLoader:
                 element.decompose()
 
             return str(content.get_text()).strip()
-        loader = SitemapLoader(self.datasource.url, restrict_to_same_domain=False, parsing_function=remove_nav_and_header_elements)
+        loader = SitemapLoader(self.datasource.url, restrict_to_same_domain=False, parsing_function=remove_nav_and_header_elements, continue_on_failure=True)
         return loader.load_and_split()
 
     def load_pptx(self):
