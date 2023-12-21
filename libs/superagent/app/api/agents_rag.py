@@ -92,7 +92,7 @@ async def invoke(
     datasource_ids = [ds.datasourceId for ds in agent_config.datasources]
 
     metadata_filters = {"datasource_id": {"$in": datasource_ids}}
-    vector_store = create_vector_store(metadata_filters)
+    vector_store = create_vector_store()
     index = VectorStoreIndex.from_vector_store(vector_store)
 
     chat_history = create_chat_history(body)
@@ -106,7 +106,8 @@ async def invoke(
         ),
         context_template=create_prompt_template(agent_config.prompt),
         similarity_top_k=64,
-        node_postprocessors=[TokenLimitingPostprocessor(8192)] # Memory token limit of 12,288 - 4,096 system message & user message token limit
+        node_postprocessors=[TokenLimitingPostprocessor(8192)], # Memory token limit of 12,288 - 4,096 system message & user message token limit
+        vector_store_kwargs={"filter": metadata_filters}
     )
     async def stream_message_generator(stream: StreamingAgentChatResponse) -> AsyncIterable[str]:
         async for response in stream.async_response_gen():
@@ -128,9 +129,9 @@ async def invoke(
     }
 
 
-def create_vector_store(metadata_filters: any):
+def create_vector_store():
     return PineconeVectorStore(
-        pinecone_index=pinecone_client().index, metadata_filters=metadata_filters
+        pinecone_index=pinecone_client().index
     )
 
 
