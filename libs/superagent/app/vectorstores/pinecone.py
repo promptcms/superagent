@@ -76,7 +76,11 @@ class PineconeVectorStore:
                 "id": str(uuid.uuid4()),
                 "text": doc.page_content,
                 "chunk": i,
-                **doc.metadata,
+                **{
+                    key: value
+                    for key, value in doc.metadata.items()
+                    if value is not None
+                },
             }
             for i, doc in enumerate(documents)
         ]
@@ -103,6 +107,7 @@ class PineconeVectorStore:
                 logger.info(f"Upserted documents. {res}")
             except Exception as e:
                 logger.error(f"Failed to upsert documents. Error: {e}")
+                raise e
 
         return self.index.describe_index_stats()
 
