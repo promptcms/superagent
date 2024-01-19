@@ -143,11 +143,11 @@ def create_recency(agent_config: Agent | None):
             )
             / len(agent_config.datasources)
         )
-        if agent_config.datasources is not None and len(agent_config.datasources) > 0
+        if agent_config.datasources
         else 0.0,
         "staleness": min(
             [ds.datasource.updatedAt for ds in agent_config.datasources]
-            if agent_config.datasources is not None
+            if agent_config.datasources
             else [datetime.now()],
         ),
     }
