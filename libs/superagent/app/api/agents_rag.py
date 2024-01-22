@@ -1,11 +1,38 @@
 import json
 import logging
 from datetime import datetime
-from typing import Any, Callable, List, Optional, cast, AsyncIterable
+from typing import Any, AsyncIterable, Callable, List, Optional, cast
+
+import typesense
+from decouple import config
 from fastapi import APIRouter, Depends
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from llama_index import (
+    Document,
+    OpenAIEmbedding,
+    PromptTemplate,
+    ServiceContext,
+    VectorStoreIndex,
+)
+from llama_index.bridge.pydantic import Field
 from llama_index.callbacks import CallbackManager
-from prisma.enums import DatasourceStatus
-from prisma.models import Agent
+from llama_index.chat_engine.types import ChatMode, StreamingAgentChatResponse
+from llama_index.embeddings.openai import OpenAIEmbeddingMode
+from llama_index.llms import OpenAI
+from llama_index.llms.types import ChatMessage, MessageRole
+from llama_index.memory import ChatMemoryBuffer
+from llama_index.postprocessor.types import BaseNodePostprocessor
+from llama_index.schema import NodeWithScore, QueryBundle
+from llama_index.utils import get_tokenizer
+from llama_index.vector_stores import PineconeVectorStore
+from llama_index.vector_stores.types import (
+    FilterCondition,
+    FilterOperator,
+    MetadataFilter,
+    MetadataFilters,
+)
+from llama_index.vector_stores.typesense import TypesenseVectorStore
+from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from app.models.response import (
@@ -16,25 +43,8 @@ from app.utils.langfuse import LangfuseHandler
 from app.utils.llm import LLM_MAPPING
 from app.utils.prisma import prisma
 from app.vectorstores.pinecone import PineconeVectorStore as pinecone_client
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from llama_index import (
-    Document,
-    PromptTemplate,
-    ServiceContext,
-    VectorStoreIndex,
-)
-from llama_index.bridge.pydantic import Field
-from llama_index.chat_engine.types import ChatMode, StreamingAgentChatResponse
-from llama_index.llms import OpenAI
-from llama_index.llms.types import MessageRole, ChatMessage
-from llama_index.memory import ChatMemoryBuffer
-from llama_index.postprocessor.types import BaseNodePostprocessor
-from llama_index.schema import NodeWithScore, QueryBundle
-from llama_index.utils import GlobalsHelper
-from llama_index.vector_stores import PineconeVectorStore
-
-from pydantic import BaseModel
+from prisma.enums import DatasourceStatus
+from prisma.models import Agent
 
 router = APIRouter()
 logging.basicConfig(level=logging.INFO)
@@ -66,25 +76,37 @@ async def invoke(
     )
     datasource_ids = [ds.datasourceId for ds in agent_config.datasources]
 
-    metadata_filters = {"datasource_id": {"$in": datasource_ids}}
+    filters = MetadataFilters(
+        filters=[
+            MetadataFilter(
+                key="metadata.datasource_id",
+                operator=FilterOperator.EQ,
+                value=str(datasource_id),
+            )
+            for datasource_id in datasource_ids
+        ],
+        condition=FilterCondition.AND,
+    )
+    chat_history = create_chat_history(chat_history=body.chatHistory)
+
+    service_context = create_service_context(
+        api_user_id=api_user.id,
+        agent_id=agent_id,
+        llm_model=body.llmModel or agent_config.llmModel,
+    )
+
     vector_store = create_vector_store()
     index = VectorStoreIndex.from_vector_store(vector_store)
 
-    chat_history = create_chat_history(chat_history=body.chatHistory)
-
     chat_engine = index.as_chat_engine(
-        service_context=create_service_context(
-            api_user_id=api_user.id,
-            agent_id=agent_id,
-            llm_model=body.llmModel or agent_config.llmModel,
-        ),
+        service_context=service_context,
         chat_mode=ChatMode.CONTEXT,
         chat_history=chat_history,
         memory=ChatMemoryBuffer.from_defaults(
             chat_history=chat_history,
             token_limit=body.tokenLimitMemory,
         ),
-        vector_store_kwargs={"filter": metadata_filters},
+        filters=filters,
         context_template=create_prompt_template(
             additional_instructions=agent_config.prompt
         ),
@@ -154,7 +176,27 @@ def create_recency(agent_config: Agent | None):
 
 
 def create_vector_store():
-    return PineconeVectorStore(pinecone_index=pinecone_client().index)
+    vectorstore = config("VECTORSTORE", "pinecone")
+    if vectorstore == "typesense":
+        tsvs = TypesenseVectorStore(
+            client=typesense.Client(
+                {
+                    "nodes": [
+                        {
+                            "host": config("TYPESENSE_HOST", ""),
+                            "port": "443",
+                            "protocol": "https",
+                        }
+                    ],
+                    "api_key": config("TYPESENSE_API_KEY", ""),
+                }
+            ),
+            collection_name=config("TYPESENSE_COLLECTION_NAME", "superagent"),
+        )
+        tsvs.is_embedding_query = True
+        return tsvs
+    else:
+        return PineconeVectorStore(pinecone_index=pinecone_client().index)
 
 
 def create_chat_history(chat_history: Optional[List[Any]]):
@@ -181,6 +223,7 @@ def create_service_context(api_user_id: str, agent_id: str, llm_model: str):
     return ServiceContext.from_defaults(
         callback_manager=callback_manager,
         llm=OpenAI(temperature=0, model=LLM_MAPPING[llm_model]),
+        embed_model=OpenAIEmbedding(mode=OpenAIEmbeddingMode.SIMILARITY_MODE),
     )
 
 
@@ -219,14 +262,14 @@ class TokenLimitingPostprocessor(BaseNodePostprocessor):
     token_limit: int = Field(description="Token limit for context.")
     tokenizer_fn: Callable[[str], List] = Field(
         # NOTE: mypy does not handle the typing here well, hence the cast
-        default_factory=cast(Callable[[], Any], GlobalsHelper().tokenizer),
+        default_factory=cast(Callable[[], Any], get_tokenizer()),
         exclude=True,
     )
 
     def __init__(
         self,
         token_limit: int = 8192,
-        tokenizer_fn=GlobalsHelper().tokenizer,
+        tokenizer_fn=get_tokenizer(),
     ) -> None:
         super().__init__(token_limit=token_limit, tokenizer_fn=tokenizer_fn)
 
