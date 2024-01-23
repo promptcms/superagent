@@ -1,3 +1,5 @@
+import typing
+
 import typesense
 from decouple import config
 from langchain.docstore.document import Document
@@ -70,3 +72,49 @@ class TypesenseVectorStore:
         return self._client.collections[self._collection_name].documents.import_(
             to_upsert, {"action": "upsert"}, batch_size=batch_size
         )
+
+    def query(
+        self,
+        prompt: str,
+        metadata_filter: dict | None = None,
+        top_k: int = 5,
+        namespace: str | None = None,
+        min_score: float | None = None,  # new argument for minimum similarity score
+    ) -> list[typing.Any]:
+        typesense_filter = []
+        for i, (key, value) in enumerate(metadata_filter.items()):
+            typesense_filter.append(f"metadata.{key}:={value}")
+        search_parameters = {
+            "q": prompt,
+            "query_by": "vec",
+            "filter_by": " && ".join(typesense_filter),
+            "limit": top_k or 100,
+            "prefix": False,
+            "exclude_fields": "vec",
+        }
+
+        results = self._client.collections[self._collection_name].documents.search(
+            search_parameters
+        )
+        return results["hits"]
+
+    def query_documents(
+        self,
+        prompt: str,
+        datasource_id: str,
+        top_k: int | None,
+        query_type,
+    ) -> list[str]:
+        search_parameters = {
+            "q": prompt,
+            "query_by": "vec",
+            "filter_by": f"metadata.datasource_id:={datasource_id}",
+            "limit": top_k or 100,
+            "prefix": False,
+            "exclude_fields": "vec",
+        }
+
+        results = self._client.collections[self._collection_name].documents.search(
+            search_parameters
+        )
+        return [hit["document"]["text"] for hit in results["hits"]]
