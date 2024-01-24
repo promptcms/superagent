@@ -26,7 +26,6 @@ from llama_index.schema import NodeWithScore, QueryBundle
 from llama_index.utils import get_tokenizer
 from llama_index.vector_stores import PineconeVectorStore
 from llama_index.vector_stores.types import (
-    FilterCondition,
     FilterOperator,
     MetadataFilter,
     MetadataFilters,
@@ -75,18 +74,19 @@ async def invoke(
         },
     )
     datasource_ids = [ds.datasourceId for ds in agent_config.datasources]
+    if datasource_ids:
+        filters = MetadataFilters(
+            filters=[
+                MetadataFilter(
+                    key="filter_by",
+                    operator=FilterOperator.EQ,
+                    value=f"metadata.datasource_id:=[{','.join(datasource_ids)}]",
+                )
+            ],
+        )
+    else:
+        raise ValueError("No datasources attached.")
 
-    filters = MetadataFilters(
-        filters=[
-            MetadataFilter(
-                key="metadata.datasource_id",
-                operator=FilterOperator.EQ,
-                value=str(datasource_id),
-            )
-            for datasource_id in datasource_ids
-        ],
-        condition=FilterCondition.AND,
-    )
     chat_history = create_chat_history(chat_history=body.chatHistory)
 
     service_context = create_service_context(
@@ -114,6 +114,7 @@ async def invoke(
         node_postprocessors=[
             TokenLimitingPostprocessor(token_limit=body.tokenLimitContext)
         ],
+        verbose=True,
     )
 
     recency = create_recency(agent_config)
@@ -191,7 +192,7 @@ def create_vector_store():
                     "api_key": config("TYPESENSE_API_KEY", ""),
                 }
             ),
-            collection_name=config("TYPESENSE_COLLECTION_NAME", "superagent"),
+            collection_name=config("TYPESENSE_COLLECTION", "superagent"),
         )
         tsvs.is_embedding_query = True
         return tsvs
