@@ -73,19 +73,19 @@ async def invoke(
             "datasources": {"include": {"datasource": True}},
         },
     )
+
     datasource_ids = [ds.datasourceId for ds in agent_config.datasources]
-    if datasource_ids:
-        filters = MetadataFilters(
-            filters=[
-                MetadataFilter(
-                    key="filter_by",
-                    operator=FilterOperator.EQ,
-                    value=f"metadata.datasource_id:=[{','.join(datasource_ids)}]",
-                )
-            ],
-        )
-    else:
-        raise ValueError("No datasources attached.")
+    filters = MetadataFilters(
+        filters=[
+            MetadataFilter(
+                key="filter_by",
+                operator=FilterOperator.EQ,
+                value=f"metadata.datasource_id:=[{','.join(datasource_ids)}]"
+                if datasource_ids
+                else "metadata.datasource_id:=[NO_DATASOURCES_SENTINEL]",
+            )
+        ],
+    )
 
     chat_history = create_chat_history(chat_history=body.chatHistory)
 
@@ -185,8 +185,8 @@ def create_vector_store():
                     "nodes": [
                         {
                             "host": config("TYPESENSE_HOST", ""),
-                            "port": "443",
-                            "protocol": "https",
+                            "port": int(config("TYPESENSE_PORT", "443")),
+                            "protocol": config("TYPESENSE_PROTOCOL", "https"),
                         }
                     ],
                     "api_key": config("TYPESENSE_API_KEY", ""),
