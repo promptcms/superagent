@@ -34,8 +34,8 @@ class TypesenseVectorStore:
                 "nodes": [
                     {
                         "host": typesense_host,
-                        "port": "443",
-                        "protocol": "https",
+                        "port": int(config("TYPESENSE_PORT", "443")),
+                        "protocol": config("TYPESENSE_PROTOCOL", "https"),
                     }
                 ],
                 "api_key": typesense_api_key,
