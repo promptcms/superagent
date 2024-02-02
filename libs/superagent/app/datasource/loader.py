@@ -1,31 +1,35 @@
 import json
+import logging
+import re
 import tempfile
 from tempfile import NamedTemporaryFile
 from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup as Soup, BeautifulSoup
+from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup as Soup
 from langchain.docstore.document import Document
 from langchain.document_loaders import (
     GitLoader,
     PyPDFLoader,
     RecursiveUrlLoader,
+    SitemapLoader,
     TextLoader,
     UnstructuredMarkdownLoader,
     UnstructuredWordDocumentLoader,
-    SitemapLoader,
     WebBaseLoader,
     YoutubeLoader,
 )
 from langchain.document_loaders.airbyte import AirbyteStripeLoader
+from langchain.utils.html import (
+    PREFIXES_TO_IGNORE_REGEX,
+    SUFFIXES_TO_IGNORE,
+)
 from pyairtable import Api
 
-from prisma.models import Datasource
-
-import logging
-
 from app.utils.threading import run_async_code_in_thread
+from prisma.models import Datasource
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +94,11 @@ class DataLoader:
         pass
 
     def load_sitemap(self):
+        FILTER_REGEX = (
+            "^(?!.*\.(mp3|m4a|ogg|webm|mpg|mp2|mpeg|mpe|mpv|mp4|m4p|m4v|avi|mov|qt|flv|swf|gif|css|js|ico"
+            "|png|jpg|jpeg|gif|svg|csv|bz2|zip|epub)$).*"
+        )
+
         def remove_nav_and_header_elements(content: BeautifulSoup) -> str:
             exclude = content.find_all(["nav", "footer", "header", "head"])
             for element in exclude:
@@ -99,6 +108,7 @@ class DataLoader:
 
         loader = SitemapLoader(
             self.datasource.url,
+            filter_urls=[FILTER_REGEX],
             restrict_to_same_domain=False,
             parsing_function=remove_nav_and_header_elements,
             continue_on_failure=True,
@@ -162,11 +172,43 @@ class DataLoader:
             return loader.load_and_split()
 
     def load_webpage(self):
+        IGNORED_MEDIA_SUFFIXES = [
+            ".mp3",
+            ".m4a",
+            ".ogg",
+            ".webm",
+            ".mpg",
+            ".mp2",
+            ".mpeg",
+            ".mpe",
+            ".mpv",
+            ".mp4",
+            ".m4p",
+            ".m4v",
+            ".avi",
+            ".mov",
+            ".qt",
+            ".flv",
+            ".swf",
+            ".gif",
+        ]
+        SUFFIXES_TO_IGNORE_REGEX = (
+            "(?!"
+            + "|".join(
+                [
+                    re.escape(s) + r"[\#'\"]"
+                    for s in SUFFIXES_TO_IGNORE + IGNORED_MEDIA_SUFFIXES
+                ]
+            )
+            + ")"
+        )
+        DEFAULT_LINK_REGEX = rf"href=[\"']{PREFIXES_TO_IGNORE_REGEX}((?:{SUFFIXES_TO_IGNORE_REGEX}.)*?)[\#'\"]"
         loader = RecursiveUrlLoader(
             url=self.datasource.url,
             max_depth=3,
             extractor=lambda x: Soup(x, "html.parser").text,
             timeout=60,
+            link_regex=DEFAULT_LINK_REGEX,
         )
         chunks = loader.load_and_split()
         for chunk in chunks:
