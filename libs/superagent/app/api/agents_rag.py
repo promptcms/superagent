@@ -58,9 +58,70 @@ class AgentRAGInvoke(BaseModel):
     llmModel: Optional[str]
 
 
+class AgentRAGSearch(BaseModel):
+    input: str
+    llmModel: Optional[str]
+
+
+@router.post(
+    "/agents_rag/{agent_id}/search",
+    name="search",
+    description="Search Agent Memory",
+    response_model=AgentInvokeResponse,
+)
+async def search(
+    agent_id: str, body: AgentRAGSearch, api_user=Depends(get_current_api_user)
+):
+    agent_config = await prisma.agent.find_first(
+        where={"id": agent_id, "apiUserId": api_user.id},
+        include={
+            "datasources": {"include": {"datasource": True}},
+        },
+    )
+
+    datasource_ids = [ds.datasourceId for ds in agent_config.datasources]
+    filters = MetadataFilters(
+        filters=[
+            MetadataFilter(
+                key="filter_by",
+                operator=FilterOperator.EQ,
+                value=f"metadata.datasource_id:=[{','.join(datasource_ids)}]"
+                if datasource_ids
+                else "metadata.datasource_id:=[NO_DATASOURCES_SENTINEL]",
+            )
+        ],
+    )
+
+    service_context = create_service_context(
+        api_user_id=api_user.id,
+        agent_id=agent_id,
+        llm_model=body.llmModel or agent_config.llmModel,
+    )
+
+    vector_store = create_vector_store()
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    query_engine = index.as_query_engine(
+        service_context=service_context,
+        filters=filters,
+        similarity_top_k=8,
+        verbose=True,
+    )
+
+    recency = create_recency(agent_config)
+
+    return {
+        "success": True,
+        "data": {
+            "input": body.input,
+            "output": (await query_engine.aquery(body.input)).response,
+            "recency": recency,
+        },
+    }
+
+
 @router.post(
     "/agents_rag/{agent_id}/invoke",
-    name="invoke",
+    name="search",
     description="Invoke a RAG agent",
     response_model=AgentInvokeResponse,
 )
@@ -114,7 +175,6 @@ async def invoke(
         node_postprocessors=[
             TokenLimitingPostprocessor(token_limit=body.tokenLimitContext)
         ],
-        verbose=True,
     )
 
     recency = create_recency(agent_config)

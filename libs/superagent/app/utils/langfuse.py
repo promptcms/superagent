@@ -2,12 +2,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from langfuse import Langfuse
-from langfuse.model import CreateTrace, CreateEvent, CreateGeneration, UpdateGeneration
+from langfuse.model import CreateEvent, CreateGeneration, CreateTrace, UpdateGeneration
 from llama_index.callbacks.base_handler import BaseCallbackHandler
 from llama_index.callbacks.schema import (
+    BASE_TRACE_EVENT,
     CBEvent,
     CBEventType,
-    BASE_TRACE_EVENT,
     EventPayload,
 )
 
